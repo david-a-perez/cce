@@ -81,8 +81,7 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("args")
-                        .multiple(true)
-                        .allow_hyphen_values(true)
+                        .raw(true)
                         .help(" arguments to pass to the compiler"),
                 ),
         )
@@ -122,7 +121,10 @@ fn main() {
             Some(path) => read_src(path),
             None => edit_snippet(),
         };
-        let args = matches.value_of("args").unwrap_or("").to_string();
+        let args = match matches.values_of("args") {
+            Some(iter) => iter.collect::<Vec<_>>().join(" "),
+            None => "".to_string(),
+        };
         if matches.is_present("shorten") {
             let url = shorten(client, &host, src, compiler, args);
             println!("URL: {}", url);
