@@ -15,7 +15,7 @@ mod source;
 mod tempedit;
 mod url;
 
-use requests::{compile, get_compilers, get_languages, shorten};
+use requests::{compile, execute, get_compilers, get_languages, shorten};
 use reqwest::header::HeaderMap;
 use tempedit::{edit_snippet, read_src};
 use url::get_url;
@@ -85,6 +85,55 @@ fn main() {
                         .help(" arguments to pass to the compiler"),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("execute")
+                .about("Execute a snippet on compiler explorer")
+                .arg(
+                    Arg::with_name("url")
+                        .long("url")
+                        .help("get an URL for given execution"),
+                )
+                .arg(
+                    Arg::with_name("open")
+                        .long("open")
+                        .help("open the result in a browser"),
+                )
+                .arg(
+                    Arg::with_name("shorten")
+                        .long("shorten")
+                        .help("Shorten the link. Implies '--url'"),
+                )
+                .arg(
+                    Arg::with_name("id")
+                        .takes_value(true)
+                        .help(" compiler id to use for compilation")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("file")
+                        .takes_value(true)
+                        .help(" compile from the given source file"),
+                )
+                .arg(
+                    Arg::with_name("stdin")
+                        .long("stdin")
+                        .takes_value(true)
+                        .help("STDIN for execution"),
+                )
+                .arg(
+                    Arg::with_name("exec_args")
+                        .long("args")
+                        .multiple(true)
+                        .allow_hyphen_values(true)
+                        .value_terminator("--")
+                        .help("arguments for execution"),
+                )
+                .arg(
+                    Arg::with_name("compiler_args")
+                        .raw(true)
+                        .help(" arguments to pass to the compiler"),
+                ),
+        )
         .get_matches();
     let mut headers = HeaderMap::new();
     headers.insert("ACCEPT", "application/json".parse().unwrap());
@@ -148,6 +197,59 @@ fn main() {
             };
         }
         let asm = compile(client, &host, src, compiler, args);
+        println!("{}", asm);
+    } else if let Some(matches) = matches.subcommand_matches("execute") {
+        let all_compilers = get_compilers(&client, &host, None);
+        let compiler = matches.value_of("id").unwrap();
+        let valid_id = all_compilers.iter().any(|c| c.id == compiler);
+        if !valid_id {
+            println!("Not a valid compiler id! Run cce list compilers [lang]");
+            std::process::exit(1)
+        }
+        let src = match matches.value_of("file") {
+            Some(path) => read_src(path),
+            None => edit_snippet(),
+        };
+        let stdin = matches.value_of("stdin").unwrap_or("");
+        let exec_args = match matches.values_of("exec_args") {
+            Some(iter) => iter.map(|s| s.to_string()).collect(),
+            None => Vec::new(),
+        };
+        let compiler_args = match matches.values_of("compiler_args") {
+            Some(iter) => iter.collect::<Vec<_>>().join(" "),
+            None => "".to_string(),
+        };
+        if matches.is_present("shorten") {
+            let url = shorten(client, &host, src, compiler, compiler_args);
+            println!("URL: {}", url);
+            if matches.is_present("open") {
+                match open::that(url) {
+                    Ok(_) => println!("Opened result in browser"),
+                    Err(_e) => println!("Failed to open the compilation in the browser."),
+                };
+            }
+            return; // Shorten already triggers a compile.
+        }
+        if matches.is_present("url") {
+            let url = get_url(&src, &host, &compiler, &compiler_args);
+            println!("URL: {}", url);
+        }
+        if matches.is_present("open") {
+            let url = get_url(&src, &host, &compiler, &compiler_args);
+            match open::that(url) {
+                Ok(_) => println!("Opened result in browser"),
+                Err(_e) => println!("Failed to open the compilation in the browser."),
+            };
+        }
+        let asm = execute(
+            client,
+            &host,
+            src,
+            exec_args,
+            stdin,
+            compiler,
+            compiler_args,
+        );
         println!("{}", asm);
     }
 }

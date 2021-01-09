@@ -79,6 +79,83 @@ pub fn compile(client: Client, host: &str, src: String, compiler: &str, args: St
     res
 }
 
+pub fn execute(
+    client: Client,
+    host: &str,
+    src: String,
+    args: Vec<String>,
+    stdin: &str,
+    compiler: &str,
+    compiler_args: String,
+) -> String {
+    let filters = json!(
+        {
+            "intel": true,
+            "demangle": true,
+            "directives": true,
+            "comments": true,
+            "labels": true,
+            "execute": true,
+        }
+    );
+
+    let args = json!(args);
+
+    let execute_parameters = json!({
+        "args": args,
+        "stdin": stdin,
+    });
+
+    let options = json!({
+        "executeParameters": execute_parameters,
+        "userArguments": compiler_args,
+        "filters": filters
+    });
+
+    let source = json!({
+        "source": src,
+        "options": options
+    });
+
+    let output: Output = client
+        .post(format!("{}/api/compiler/{}/compile", host, &compiler).as_str())
+        .json(&source)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+
+    let mut res = String::new();
+    if output.code != 0 {
+        for line in output.stderr {
+            res.push_str(&line.text);
+            res.push('\n');
+        }
+    } else {
+        for line in output.asm {
+            res.push_str(&line.text);
+            res.push('\n');
+        }
+    }
+
+    res.push_str("Execution Code: ");
+    res.push_str(&output.exec_result.code.to_string());
+    res.push('\n');
+
+    res.push_str("STDERR:\n");
+    for line in output.exec_result.stderr {
+        res.push_str(&line.text);
+        res.push('\n');
+    }
+
+    res.push_str("STDOUT:\n");
+    for line in output.exec_result.stdout {
+        res.push_str(&line.text);
+        res.push('\n');
+    }
+    res
+}
+
 /// Send data to Compiler Explorer and shortens it. This may be used when the to be compiled sources are too large to fit into the URL.
 /// Returns the shortened URL
 pub fn shorten(client: Client, host: &str, src: String, compiler: &str, args: String) -> String {

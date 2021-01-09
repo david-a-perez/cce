@@ -6,9 +6,20 @@ pub struct Text {
     pub text: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct ExecResult {
+    pub code: i32,
+    pub stdout: Vec<Text>,
+    pub stderr: Vec<Text>,
+    #[serde(rename = "didExecute")]
+    pub did_execute: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Output {
     pub code: i32,
     pub stderr: Vec<Text>,
     pub asm: Vec<Text>,
+    #[serde(default, rename = "execResult")]
+    pub exec_result: ExecResult,
 }
